@@ -18,22 +18,8 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Generate key pairs (standard mode)
+    /// Generate validator key pairs for hash-based signatures
     Generate {
-        /// Number of keys to generate
-        #[arg(long)]
-        num_keys: usize,
-
-        /// Log2 of the number of active epochs (e.g., 18 for 2^18 active epochs)
-        #[arg(long)]
-        log_num_active_epochs: usize,
-
-        /// Directory to save the keys to
-        #[arg(long)]
-        output_dir: PathBuf,
-    },
-    /// Generate keys for genesis validator integration
-    GenerateForGenesis {
         /// Number of validator keys to generate
         #[arg(long)]
         num_validators: usize,
@@ -46,7 +32,7 @@ enum Commands {
         #[arg(long)]
         output_dir: PathBuf,
 
-        /// Create a manifest file for genesis integration
+        /// Create a manifest file for validator keys
         #[arg(long, default_value = "true")]
         create_manifest: bool,
     },
@@ -57,19 +43,12 @@ fn main() -> std::io::Result<()> {
 
     match args.command {
         Commands::Generate {
-            num_keys,
-            log_num_active_epochs,
-            output_dir,
-        } => {
-            generate_keys(num_keys, log_num_active_epochs, output_dir, false)?;
-        }
-        Commands::GenerateForGenesis {
             num_validators,
             log_num_active_epochs,
             output_dir,
             create_manifest,
         } => {
-            generate_keys(num_validators, log_num_active_epochs, output_dir.clone(), create_manifest)?;
+            generate_keys(num_validators, log_num_active_epochs, output_dir.clone())?;
             
             if create_manifest {
                 create_validator_manifest(&output_dir, num_validators, log_num_active_epochs)?;
@@ -81,10 +60,9 @@ fn main() -> std::io::Result<()> {
 }
 
 fn generate_keys(
-    num_keys: usize,
+    num_validators: usize,
     log_num_active_epochs: usize,
     output_dir: PathBuf,
-    for_genesis: bool,
 ) -> std::io::Result<()> {
     // Create the output directory if it doesn't exist
     fs::create_dir_all(&output_dir)?;
@@ -92,26 +70,20 @@ fn generate_keys(
     let activation_duration = 1 << log_num_active_epochs;
     
     println!(
-        "Generating {} keys with 2^{} active epochs ({} total) in directory: {}\n",
-        num_keys,
+        "Generating {} validator keys with 2^{} active epochs ({} total) in directory: {}\n",
+        num_validators,
         log_num_active_epochs,
         activation_duration,
         output_dir.display()
     );
 
-    if for_genesis {
-        println!("🔐 Genesis Mode: Keys will be formatted for validator integration");
-        println!("⚠️  Note: Secret keys are large files (~several MB each)\n");
-    }
+    println!("🔐 Keys will be formatted for validator integration");
+    println!("⚠️  Note: Secret keys are large files (~several MB each)\n");
 
     let mut rng = rand::rng();
 
-    for i in 0..num_keys {
-        let key_prefix = if for_genesis {
-            format!("validator_{}", i)
-        } else {
-            format!("key_{}", i)
-        };
+    for i in 0..num_validators {
+        let key_prefix = format!("validator_{}", i);
         
         println!("Generating {}...", key_prefix);
 
@@ -132,7 +104,7 @@ fn generate_keys(
         println!("  ✅ {}_sk.json", key_prefix);
     }
 
-    println!("\n✅ Successfully generated and saved {} key pairs.", num_keys);
+    println!("\n✅ Successfully generated and saved {} validator key pairs.", num_validators);
 
     Ok(())
 }

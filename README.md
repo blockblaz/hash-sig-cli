@@ -19,28 +19,30 @@ cargo build --release
 
 ## Usage
 
-Generate cryptographic key pairs for hash-based signatures:
+Generate validator key pairs for hash-based signatures:
 
 ```bash
 cargo run --release --bin hashsig -- generate \
-  --num-keys 5 \
-  --log-num-active-epochs 12 \
+  --num-validators 5 \
+  --log-num-active-epochs 18 \
   --output-dir ./generated_keys
 ```
 
 **Parameters:**
-- `--num-keys`: Number of key pairs to generate
+- `--num-validators`: Number of validator key pairs to generate
 - `--log-num-active-epochs`: Log2 of the number of active epochs (e.g., 18 for 2^18 = 262,144 active epochs)
 - `--output-dir`: Directory where keys will be saved
+- `--create-manifest`: Create a manifest file (optional, defaults to `true`)
 
 **Output:**
 The tool creates a directory with key pairs in JSON format:
 ```
 generated_keys/
-├── key_0_pk.json    # Public key
-├── key_0_sk.json    # Secret key
-├── key_1_pk.json
-├── key_1_sk.json
+├── validator-keys-manifest.yaml  # Manifest file (if --create-manifest is true)
+├── validator_0_pk.json           # Public key for validator 0
+├── validator_0_sk.json           # Secret key for validator 0
+├── validator_1_pk.json           # Public key for validator 1
+├── validator_1_sk.json           # Secret key for validator 1
 └── ...
 ```
 
