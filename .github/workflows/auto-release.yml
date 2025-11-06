@@ -34,12 +34,52 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Read VERSION file
-      id: get_version
+    - name: Extract tags from PR labels
+      id: get_tags_labels
       run: |
-        VERSION=$(cat VERSION)
+        # Get PR labels and extract version
+        LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+        echo "PR Labels: $LABELS"
+
+        # Look for version label (e.g., "v1.0.0", "version:1.0.0", etc.)
+        VERSION=$(echo $LABELS | jq -r '.[] | select(test("^(v|version:)?[0-9]+\\.[0-9]+\\.[0-9]+")) | gsub("^(v|version:)"; "")')
+
+        # Look for zeam network tags (devnet0, devnet1, testnet, mainnet)
+        ZEAM_TAG=$(echo $LABELS | jq -r '.[] | select(test("^(devnet[0-9]+|testnet[0-9]*|mainnet)$"))')
+
+        if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+          echo "❌ No version label found! Please add a label like 'v1.0.0' or 'version:1.0.0'"
+          exit 1
+        fi
+
+        # Set outputs
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+        echo "git_tag=v$VERSION" >> $GITHUB_OUTPUT
+
+        if [ -n "$ZEAM_TAG" ] && [ "$ZEAM_TAG" != "null" ]; then
+          echo "zeam_tag=$ZEAM_TAG" >> $GITHUB_OUTPUT
+          echo "has_network_tag=true" >> $GITHUB_OUTPUT
+          echo "✅ Found network tag: $ZEAM_TAG"
+        else
+          echo "has_network_tag=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No network tag found (optional)"
+        fi
+
+        echo "✅ Version found: $VERSION"
+
+    - name: Create and push git tags
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        # Create version tag
+        if git rev-parse "${{ steps.get_tags_labels.outputs.git_tag }}" >/dev/null 2>&1; then
+          echo "⚠️ Tag ${{ steps.get_tags_labels.outputs.git_tag }} already exists, skipping"
+        else
+          git tag -a "${{ steps.get_tags_labels.outputs.git_tag }}" -m "Release version ${{ steps.get_tags_labels.outputs.version }}"
+          git push origin "${{ steps.get_tags_labels.outputs.git_tag }}"
+          echo "✅ Created version tag ${{ steps.get_tags_labels.outputs.git_tag }}"
+        fi
 
     - name: Extract metadata
       id: meta
@@ -48,7 +88,8 @@ jobs:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=raw,value=latest
-          type=raw,value=${{ steps.get_version.outputs.version }}
+          type=raw,value=${{ steps.get_tags_labels.outputs.version }}
+          type=raw,value=${{ steps.get_tags_labels.outputs.zeam_tag }},enable=${{ steps.get_tags_labels.outputs.has_network_tag }}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
