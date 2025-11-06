@@ -16,6 +16,7 @@ jobs:
   auto-release:
     # Only run if PR was merged to release branch (not just closed)
     #for test create a pr and merge it to release branch
+    #another comment for test purposes for creating pr and merging it to release branch
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
