@@ -15,8 +15,6 @@ permissions:
 jobs:
   auto-release:
     # Only run if PR was merged to release branch (not just closed)
-    #for test create a pr and merge it to release branch
-    #another comment for test purposes for creating pr and merging it to release branch
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
@@ -81,6 +79,18 @@ jobs:
           git tag -a "${{ steps.get_tags_labels.outputs.git_tag }}" -m "Release version ${{ steps.get_tags_labels.outputs.version }}"
           git push origin "${{ steps.get_tags_labels.outputs.git_tag }}"
           echo "✅ Created version tag ${{ steps.get_tags_labels.outputs.git_tag }}"
+        fi
+
+        # Create zeam network tag if network label exists
+        if [ "${{ steps.get_tags_labels.outputs.has_network_tag }}" = "true" ]; then
+          ZEAM_GIT_TAG="${{ steps.get_tags_labels.outputs.zeam_tag }}"
+          if git rev-parse "$ZEAM_GIT_TAG" >/dev/null 2>&1; then
+            echo "⚠️ Zeam tag $ZEAM_GIT_TAG already exists, skipping"
+          else
+            git tag -a "$ZEAM_GIT_TAG" -m "Zeam network tag for ${{ steps.get_tags_labels.outputs.zeam_tag }}"
+            git push origin "$ZEAM_GIT_TAG"
+            echo "✅ Created zeam tag $ZEAM_GIT_TAG"
+          fi
         fi
 
     - name: Extract metadata
