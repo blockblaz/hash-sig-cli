@@ -7,6 +7,7 @@ use hashsig::signature::{
     generalized_xmss::instantiations_poseidon_top_level::lifetime_2_to_the_32::hashing_optimized::SIGTopLevelTargetSumLifetime32Dim64Base8,
     SignatureScheme,
 };
+use serde_json::Value;
 
 /// A CLI tool to generate cryptographic keys for hash-based signatures.
 #[derive(Parser, Debug)]
@@ -109,6 +110,44 @@ fn generate_keys(
     Ok(())
 }
 
+/// Convert pubkey JSON file to hex string
+/// Reads the JSON file, extracts root and parameter arrays,
+/// converts each u32 to 4 bytes (little-endian), concatenates,
+/// and returns hex string with "0x" prefix
+fn pubkey_json_to_hex(pk_file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+    // Read JSON file
+    let json_content = fs::read_to_string(pk_file_path)?;
+    let json: Value = serde_json::from_str(&json_content)?;
+    
+    // Extract root array (8 u32 integers)
+    let root_array = json["root"]
+        .as_array()
+        .ok_or("Missing or invalid 'root' array")?;
+    
+    // Extract parameter array (5 u32 integers)
+    let param_array = json["parameter"]
+        .as_array()
+        .ok_or("Missing or invalid 'parameter' array")?;
+    
+    // Convert root array to bytes (little-endian)
+    let mut pubkey_bytes = Vec::new();
+    for val in root_array {
+        let num = val.as_u64().ok_or("Invalid number in root array")? as u32;
+        pubkey_bytes.extend_from_slice(&num.to_le_bytes());
+    }
+    
+    // Convert parameter array to bytes (little-endian)
+    for val in param_array {
+        let num = val.as_u64().ok_or("Invalid number in parameter array")? as u32;
+        pubkey_bytes.extend_from_slice(&num.to_le_bytes());
+    }
+    
+    // Convert bytes to hex string with "0x" prefix
+    let hex_string = format!("0x{}", hex::encode(&pubkey_bytes));
+    
+    Ok(hex_string)
+}
+
 fn create_validator_manifest(
     output_dir: &PathBuf,
     num_validators: usize,
@@ -132,9 +171,17 @@ fn create_validator_manifest(
     writeln!(manifest_file, "validators:")?;
     
     for i in 0..num_validators {
+        // Read the pubkey JSON file and convert to hex
+        let pk_file_path = output_dir.join(format!("validator_{}_pk.json", i));
+        let pubkey_hex = pubkey_json_to_hex(&pk_file_path)
+            .map_err(|e| std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to convert pubkey to hex for validator {}: {}", i, e)
+            ))?;
+        
         writeln!(manifest_file, "  - index: {}", i)?;
-        writeln!(manifest_file, "    public_key_file: validator_{}_pk.json", i)?;
-        writeln!(manifest_file, "    secret_key_file: validator_{}_sk.json", i)?;
+        writeln!(manifest_file, "    pubkey_hex: {}", pubkey_hex)?;
+        writeln!(manifest_file, "    privkey_file: validator_{}_sk.json", i)?;
         if i < num_validators - 1 {
             writeln!(manifest_file)?;
         }
