@@ -66,3 +66,4 @@ Apache Version 2.0 (same as hash-sig)
 ## Contributing
 
 This is a separate codebase from the main `hash-sig` library to keep the cryptography-focused repository minimal and focused. Feel free to contribute CLI enhancements here.
+
