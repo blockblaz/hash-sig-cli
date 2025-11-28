@@ -9,8 +9,8 @@ name = "hashsig"
 path = "src/main.rs"
 
 [dependencies]
-# Hash-sig library (from GitHub repository)
-hashsig = { git = "https://github.com/b-wagn/hash-sig.git" }
+# LeanSig library (from GitHub repository, pinned to commit)
+leansig = { git = "https://github.com/leanEthereum/leanSig.git", rev = "3f1117fb41fbe77d7e6bc5501ca7a1b5741ce672" }
 
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }

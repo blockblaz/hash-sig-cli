@@ -1,15 +1,15 @@
 # Hash-Sig CLI
 
-A command-line interface for the [hash-sig](https://github.com/b-wagn/hash-sig) library - a prototype implementation of hash-based signatures for post-quantum cryptography.
+A command-line interface for the [leanSig](https://github.com/leanEthereum/leanSig) library - a prototype implementation of hash-based signatures for post-quantum cryptography.
 
 ## Overview
 
-This CLI tool provides a user-friendly interface to work with hash-based signatures, keeping the main `hash-sig` repository focused on cryptography while providing practical tooling in a separate codebase.
+This CLI tool provides a user-friendly interface to work with hash-based signatures, keeping the main `leanSig` repository focused on cryptography while providing practical tooling in a separate codebase.
 
 ## Prerequisites
 
 - Rust >= 1.87
-- Internet connection (to fetch the `hash-sig` dependency from GitHub)
+- Internet connection (to fetch the `leanSig` dependency from GitHub)
 
 ## Installation
 
@@ -56,14 +56,14 @@ Currently uses the `SIGTopLevelTargetSumLifetime32Dim64Base8` scheme:
 
 ## References
 
-- [Hash-Sig Repository](https://github.com/b-wagn/hash-sig)
+- [LeanSig Repository](https://github.com/leanEthereum/leanSig)
 - [Research Paper](https://eprint.iacr.org/2025/055.pdf)
 
 ## License
 
-Apache Version 2.0 (same as hash-sig)
+Apache Version 2.0 (same as leanSig)
 
 ## Contributing
 
-This is a separate codebase from the main `hash-sig` library to keep the cryptography-focused repository minimal and focused. Feel free to contribute CLI enhancements here.
+This is a separate codebase from the main `leanSig` library to keep the cryptography-focused repository minimal and focused. Feel free to contribute CLI enhancements here.
 

@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use hashsig::signature::{
+use leansig::signature::{
     generalized_xmss::instantiations_poseidon_top_level::lifetime_2_to_the_32::hashing_optimized::SIGTopLevelTargetSumLifetime32Dim64Base8,
     SignatureScheme,
 };
