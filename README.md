@@ -66,4 +66,3 @@ Apache Version 2.0 (same as leanSig)
 ## Contributing
 
 This is a separate codebase from the main `leanSig` library to keep the cryptography-focused repository minimal and focused. Feel free to contribute CLI enhancements here.
-
