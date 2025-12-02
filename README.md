@@ -35,16 +35,18 @@ cargo run --release --bin hashsig -- generate \
 - `--create-manifest`: Create a manifest file (optional, defaults to `true`)
 
 **Output:**
-The tool creates a directory with key pairs in JSON format:
+The tool creates a directory with key pairs exported as **SSZ-encoded binary files**:
 ```
 generated_keys/
 ├── validator-keys-manifest.yaml  # Manifest file (if --create-manifest is true)
-├── validator_0_pk.json           # Public key for validator 0
-├── validator_0_sk.json           # Secret key for validator 0
-├── validator_1_pk.json           # Public key for validator 1
-├── validator_1_sk.json           # Secret key for validator 1
+├── validator_0_pk.ssz            # Public key for validator 0 (SSZ bytes)
+├── validator_0_sk.ssz            # Secret key for validator 0 (SSZ bytes)
+├── validator_1_pk.ssz            # Public key for validator 1 (SSZ bytes)
+├── validator_1_sk.ssz            # Secret key for validator 1 (SSZ bytes)
 └── ...
 ```
+
+The `.ssz` files contain the **canonical SSZ serialization** (`to_bytes()`) of the underlying key types from `leanSig`, written directly as raw bytes (not JSON or hex).
 
 ## Current Implementation
 

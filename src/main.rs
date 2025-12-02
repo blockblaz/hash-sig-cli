@@ -92,20 +92,24 @@ fn generate_keys(
         println!("Generating {}...", key_prefix);
 
         // Generate the key pair
-        let (pk, sk) = SIGTopLevelTargetSumLifetime32Dim64Base8::key_gen(&mut rng, 0, activation_duration);
+        let (pk, sk) = SIGTopLevelTargetSumLifetime32Dim64Base8::key_gen(
+            &mut rng,
+            0,
+            activation_duration,
+        );
 
-        // Serialize the public key
-        let pk_json = serde_json::to_string_pretty(&pk).expect("Failed to serialize public key");
-        let mut pk_file = File::create(output_dir.join(format!("{}_pk.json", key_prefix)))?;
-        pk_file.write_all(pk_json.as_bytes())?;
+        // Serialize the public key to SSZ bytes and write to a binary .ssz file
+        let pk_bytes = pk.to_bytes();
+        let mut pk_file = File::create(output_dir.join(format!("{}_pk.ssz", key_prefix)))?;
+        pk_file.write_all(&pk_bytes)?;
 
-        // Serialize the secret key
-        let sk_json = serde_json::to_string_pretty(&sk).expect("Failed to serialize secret key");
-        let mut sk_file = File::create(output_dir.join(format!("{}_sk.json", key_prefix)))?;
-        sk_file.write_all(sk_json.as_bytes())?;
-        
-        println!("  ✅ {}_pk.json", key_prefix);
-        println!("  ✅ {}_sk.json", key_prefix);
+        // Serialize the secret key to SSZ bytes and write to a binary .ssz file
+        let sk_bytes = sk.to_bytes();
+        let mut sk_file = File::create(output_dir.join(format!("{}_sk.ssz", key_prefix)))?;
+        sk_file.write_all(&sk_bytes)?;
+
+        println!("  ✅ {}_pk.ssz", key_prefix);
+        println!("  ✅ {}_sk.ssz", key_prefix);
     }
 
     println!("\n✅ Successfully generated and saved {} validator key pairs.", num_validators);
@@ -113,24 +117,12 @@ fn generate_keys(
     Ok(())
 }
 
-/// Convert pubkey JSON file to hex string
-/// Reads the JSON file, deserializes into PublicKey type using serde,
-/// then uses SSZ serialization (to_bytes) to get canonical form bytes.
-/// Returns hex string with "0x" prefix.
-///
-/// Note: The JSON file contains field elements in Montgomery form (internal representation).
-/// We must use to_bytes() which performs SSZ serialization to get the canonical form
-/// that is expected by from_bytes() during signature verification.
-fn pubkey_json_to_hex(pk_file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
-    // Read JSON file
-    let json_content = fs::read_to_string(pk_file_path)?;
-
-    // Deserialize into PublicKeyType using serde (this handles Montgomery form)
-    let public_key: PublicKeyType = serde_json::from_str(&json_content)?;
-
-    // Use to_bytes() which uses SSZ serialization (canonical form)
-    // This is the correct format expected by from_bytes() during verification
-    let pubkey_bytes = public_key.to_bytes();
+/// Convert pubkey SSZ file to hex string
+/// Reads the `.ssz` file as raw bytes (already in SSZ/canonical form)
+/// and returns a hex string with "0x" prefix.
+fn pubkey_ssz_to_hex(pk_file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+    // Read SSZ bytes from file
+    let pubkey_bytes = fs::read(pk_file_path)?;
 
     // Convert bytes to hex string with "0x" prefix
     let hex_string = format!("0x{}", hex::encode(&pubkey_bytes));
@@ -161,9 +153,9 @@ fn create_validator_manifest(
     writeln!(manifest_file, "validators:")?;
     
     for i in 0..num_validators {
-        // Read the pubkey JSON file and convert to hex
-        let pk_file_path = output_dir.join(format!("validator_{}_pk.json", i));
-        let pubkey_hex = pubkey_json_to_hex(&pk_file_path)
+        // Read the pubkey SSZ file and convert to hex
+        let pk_file_path = output_dir.join(format!("validator_{}_pk.ssz", i));
+        let pubkey_hex = pubkey_ssz_to_hex(&pk_file_path)
             .map_err(|e| std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to convert pubkey to hex for validator {}: {}", i, e)
@@ -171,7 +163,7 @@ fn create_validator_manifest(
         
         writeln!(manifest_file, "  - index: {}", i)?;
         writeln!(manifest_file, "    pubkey_hex: {}", pubkey_hex)?;
-        writeln!(manifest_file, "    privkey_file: validator_{}_sk.json", i)?;
+        writeln!(manifest_file, "    privkey_file: validator_{}_sk.ssz", i)?;
         if i < num_validators - 1 {
             writeln!(manifest_file)?;
         }
