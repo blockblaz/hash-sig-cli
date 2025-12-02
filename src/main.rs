@@ -9,9 +9,6 @@ use leansig::signature::{
     SignatureScheme,
 };
 
-// Type alias for the public key type
-type PublicKeyType = <SIGTopLevelTargetSumLifetime32Dim64Base8 as SignatureScheme>::PublicKey;
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum ExportFormat {
     /// Export only SSZ-encoded binary files (`.ssz`)
