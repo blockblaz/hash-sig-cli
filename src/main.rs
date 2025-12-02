@@ -2,7 +2,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use leansig::serialization::Serializable;
 use leansig::signature::{
     generalized_xmss::instantiations_poseidon_top_level::lifetime_2_to_the_32::hashing_optimized::SIGTopLevelTargetSumLifetime32Dim64Base8,
@@ -11,6 +11,14 @@ use leansig::signature::{
 
 // Type alias for the public key type
 type PublicKeyType = <SIGTopLevelTargetSumLifetime32Dim64Base8 as SignatureScheme>::PublicKey;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum ExportFormat {
+    /// Export only SSZ-encoded binary files (`.ssz`)
+    Ssz,
+    /// Export both SSZ-encoded binaries (`.ssz`) and legacy JSON files
+    Both,
+}
 
 /// A CLI tool to generate cryptographic keys for hash-based signatures.
 #[derive(Parser, Debug)]
@@ -36,6 +44,10 @@ enum Commands {
         #[arg(long)]
         output_dir: PathBuf,
 
+        /// Export format for keys: `ssz` (binary only) or `both` (SSZ + JSON, legacy)
+        #[arg(long, value_enum, default_value_t = ExportFormat::Both)]
+        export_format: ExportFormat,
+
         /// Create a manifest file for validator keys
         #[arg(long, default_value = "true")]
         create_manifest: bool,
@@ -50,9 +62,15 @@ fn main() -> std::io::Result<()> {
             num_validators,
             log_num_active_epochs,
             output_dir,
+            export_format,
             create_manifest,
         } => {
-            generate_keys(num_validators, log_num_active_epochs, output_dir.clone())?;
+            generate_keys(
+                num_validators,
+                log_num_active_epochs,
+                export_format,
+                output_dir.clone(),
+            )?;
             
             if create_manifest {
                 create_validator_manifest(&output_dir, num_validators, log_num_active_epochs)?;
@@ -66,6 +84,7 @@ fn main() -> std::io::Result<()> {
 fn generate_keys(
     num_validators: usize,
     log_num_active_epochs: usize,
+    export_format: ExportFormat,
     output_dir: PathBuf,
 ) -> std::io::Result<()> {
     // Create the output directory if it doesn't exist
@@ -85,6 +104,8 @@ fn generate_keys(
     println!("⚠️  Note: Secret keys are large files (~several MB each)\n");
 
     let mut rng = rand::rng();
+
+    let write_json = matches!(export_format, ExportFormat::Both);
 
     for i in 0..num_validators {
         let key_prefix = format!("validator_{}", i);
@@ -110,6 +131,24 @@ fn generate_keys(
 
         println!("  ✅ {}_pk.ssz", key_prefix);
         println!("  ✅ {}_sk.ssz", key_prefix);
+
+        if write_json {
+            // Also export legacy JSON representations for backwards compatibility
+            let pk_json =
+                serde_json::to_string_pretty(&pk).expect("Failed to serialize public key to JSON");
+            let mut pk_json_file =
+                File::create(output_dir.join(format!("{}_pk.json", key_prefix)))?;
+            pk_json_file.write_all(pk_json.as_bytes())?;
+
+            let sk_json =
+                serde_json::to_string_pretty(&sk).expect("Failed to serialize secret key to JSON");
+            let mut sk_json_file =
+                File::create(output_dir.join(format!("{}_sk.json", key_prefix)))?;
+            sk_json_file.write_all(sk_json.as_bytes())?;
+
+            println!("  ⚠️  (legacy) {}_pk.json", key_prefix);
+            println!("  ⚠️  (legacy) {}_sk.json", key_prefix);
+        }
     }
 
     println!("\n✅ Successfully generated and saved {} validator key pairs.", num_validators);

@@ -25,28 +25,38 @@ Generate validator key pairs for hash-based signatures:
 cargo run --release --bin hashsig -- generate \
   --num-validators 5 \
   --log-num-active-epochs 18 \
-  --output-dir ./generated_keys
+  --output-dir ./generated_keys \
+  --export-format both
 ```
 
 **Parameters:**
 - `--num-validators`: Number of validator key pairs to generate
 - `--log-num-active-epochs`: Log2 of the number of active epochs (e.g., 18 for 2^18 = 262,144 active epochs)
 - `--output-dir`: Directory where keys will be saved
+- `--export-format`: Key export format, one of:
+  - `both` (default): export **SSZ binaries** (`.ssz`) and **legacy JSON** (`.json`)
+  - `ssz`: export **only** SSZ binaries (`.ssz`)
 - `--create-manifest`: Create a manifest file (optional, defaults to `true`)
 
-**Output:**
-The tool creates a directory with key pairs exported as **SSZ-encoded binary files**:
+**Output (default `--export-format both`):**
+The tool creates a directory with key pairs exported as **SSZ-encoded binary files** plus **legacy JSON**:
 ```
 generated_keys/
 ├── validator-keys-manifest.yaml  # Manifest file (if --create-manifest is true)
 ├── validator_0_pk.ssz            # Public key for validator 0 (SSZ bytes)
 ├── validator_0_sk.ssz            # Secret key for validator 0 (SSZ bytes)
+├── validator_0_pk.json           # Public key for validator 0 (legacy JSON)
+├── validator_0_sk.json           # Secret key for validator 0 (legacy JSON)
 ├── validator_1_pk.ssz            # Public key for validator 1 (SSZ bytes)
 ├── validator_1_sk.ssz            # Secret key for validator 1 (SSZ bytes)
+├── validator_1_pk.json           # Public key for validator 1 (legacy JSON)
+├── validator_1_sk.json           # Secret key for validator 1 (legacy JSON)
 └── ...
 ```
 
 The `.ssz` files contain the **canonical SSZ serialization** (`to_bytes()`) of the underlying key types from `leanSig`, written directly as raw bytes (not JSON or hex).
+
+The `.json` files are provided **only for backwards compatibility** and may be removed in a future version once all clients consume SSZ.
 
 ## Current Implementation
 
