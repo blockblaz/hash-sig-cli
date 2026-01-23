@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 # LeanSig library (from GitHub repository, pinned to commit)
-leansig = { git = "https://github.com/leanEthereum/leanSig.git", rev = "f10dcbefac2502d356d93f686e8b4ecd8dc8840a" }
+leansig = { git = "https://github.com/leanEthereum/leanSig.git", rev = "73bedc26ed961b110df7ac2e234dc11361a4bf25" }
 
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }

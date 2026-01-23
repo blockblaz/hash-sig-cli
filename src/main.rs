@@ -48,6 +48,10 @@ enum Commands {
         /// Create a manifest file for validator keys
         #[arg(long, default_value = "true")]
         create_manifest: bool,
+
+        /// Use distributed format: name validators with first-3 last-3 bytes of public key
+        #[arg(long)]
+        distributed: bool,
     },
 }
 
@@ -61,16 +65,24 @@ fn main() -> std::io::Result<()> {
             output_dir,
             export_format,
             create_manifest,
+            distributed,
         } => {
-            generate_keys(
+            let validator_info = generate_keys(
                 num_validators,
                 log_num_active_epochs,
                 export_format,
                 output_dir.clone(),
+                distributed,
             )?;
             
             if create_manifest {
-                create_validator_manifest(&output_dir, num_validators, log_num_active_epochs)?;
+                create_validator_manifest(
+                    &output_dir,
+                    num_validators,
+                    log_num_active_epochs,
+                    distributed,
+                    &validator_info,
+                )?;
             }
         }
     }
@@ -78,12 +90,18 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
+struct ValidatorInfo {
+    pubkey_hex: String,
+    privkey_file: String,
+}
+
 fn generate_keys(
     num_validators: usize,
     log_num_active_epochs: usize,
     export_format: ExportFormat,
     output_dir: PathBuf,
-) -> std::io::Result<()> {
+    distributed: bool,
+) -> std::io::Result<Vec<ValidatorInfo>> {
     // Create the output directory if it doesn't exist
     fs::create_dir_all(&output_dir)?;
 
@@ -103,12 +121,9 @@ fn generate_keys(
     let mut rng = rand::rng();
 
     let write_json = matches!(export_format, ExportFormat::Both);
+    let mut validator_info_list = Vec::new();
 
     for i in 0..num_validators {
-        let key_prefix = format!("validator_{}", i);
-        
-        println!("Generating {}...", key_prefix);
-
         // Generate the key pair
         let (pk, sk) = SIGTopLevelTargetSumLifetime32Dim64Base8::key_gen(
             &mut rng,
@@ -116,8 +131,30 @@ fn generate_keys(
             activation_duration,
         );
 
-        // Serialize the public key to SSZ bytes and write to a binary .ssz file
+        // Serialize the public key to SSZ bytes
         let pk_bytes = pk.to_bytes();
+        
+        // Determine key prefix based on format
+        let key_prefix = if distributed {
+            // Extract first 3 and last 3 bytes from pk_bytes
+            if pk_bytes.len() < 3 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Public key bytes too short to extract first-3 last-3 bytes"
+                ));
+            }
+            let first_3 = &pk_bytes[0..3];
+            let last_3 = &pk_bytes[pk_bytes.len() - 3..];
+            let first_3_hex = hex::encode(first_3);
+            let last_3_hex = hex::encode(last_3);
+            format!("validator-{}-{}", first_3_hex, last_3_hex)
+        } else {
+            format!("validator_{}", i)
+        };
+        
+        println!("Generating {}...", key_prefix);
+
+        // Write public key to SSZ file
         let mut pk_file = File::create(output_dir.join(format!("{}_pk.ssz", key_prefix)))?;
         pk_file.write_all(&pk_bytes)?;
 
@@ -146,30 +183,27 @@ fn generate_keys(
             println!("  ⚠️  (legacy) {}_pk.json", key_prefix);
             println!("  ⚠️  (legacy) {}_sk.json", key_prefix);
         }
+
+        // Store validator info for manifest
+        let pubkey_hex = format!("0x{}", hex::encode(&pk_bytes));
+        let privkey_file = format!("{}_sk.ssz", key_prefix);
+        validator_info_list.push(ValidatorInfo {
+            pubkey_hex,
+            privkey_file,
+        });
     }
 
     println!("\n✅ Successfully generated and saved {} validator key pairs.", num_validators);
 
-    Ok(())
-}
-
-/// Convert pubkey SSZ file to hex string
-/// Reads the `.ssz` file as raw bytes (already in SSZ/canonical form)
-/// and returns a hex string with "0x" prefix.
-fn pubkey_ssz_to_hex(pk_file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
-    // Read SSZ bytes from file
-    let pubkey_bytes = fs::read(pk_file_path)?;
-
-    // Convert bytes to hex string with "0x" prefix
-    let hex_string = format!("0x{}", hex::encode(&pubkey_bytes));
-
-    Ok(hex_string)
+    Ok(validator_info_list)
 }
 
 fn create_validator_manifest(
     output_dir: &PathBuf,
     num_validators: usize,
     log_num_active_epochs: usize,
+    distributed: bool,
+    validator_info: &[ValidatorInfo],
 ) -> std::io::Result<()> {
     println!("\n📄 Creating validator manifest...");
     
@@ -188,19 +222,18 @@ fn create_validator_manifest(
     writeln!(manifest_file, "num_validators: {}\n", num_validators)?;
     writeln!(manifest_file, "validators:")?;
     
-    for i in 0..num_validators {
-        // Read the pubkey SSZ file and convert to hex
-        let pk_file_path = output_dir.join(format!("validator_{}_pk.ssz", i));
-        let pubkey_hex = pubkey_ssz_to_hex(&pk_file_path)
-            .map_err(|e| std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to convert pubkey to hex for validator {}: {}", i, e)
-            ))?;
-        
-        writeln!(manifest_file, "  - index: {}", i)?;
-        writeln!(manifest_file, "    pubkey_hex: {}", pubkey_hex)?;
-        writeln!(manifest_file, "    privkey_file: validator_{}_sk.ssz", i)?;
-        if i < num_validators - 1 {
+    for (i, info) in validator_info.iter().enumerate() {
+        if distributed {
+            // Distributed format: no index field
+            writeln!(manifest_file, "  - pubkey_hex: {}", info.pubkey_hex)?;
+            writeln!(manifest_file, "    privkey_file: {}", info.privkey_file)?;
+        } else {
+            // Indexed format: include index field
+            writeln!(manifest_file, "  - index: {}", i)?;
+            writeln!(manifest_file, "    pubkey_hex: {}", info.pubkey_hex)?;
+            writeln!(manifest_file, "    privkey_file: {}", info.privkey_file)?;
+        }
+        if i < validator_info.len() - 1 {
             writeln!(manifest_file)?;
         }
     }
