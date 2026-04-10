@@ -1,9 +1,9 @@
-name: Auto Release on Release Branch
+name: Auto Release on Main Branch
 
 on:
   pull_request:
     types: [ closed ]
-    branches: [ release ]
+    branches: [ main ]
 
 env:
   REGISTRY: docker.io
@@ -13,9 +13,108 @@ permissions:
   contents: write
 
 jobs:
-  auto-release:
-    # Only run if PR was merged to release branch (not just closed)
-    if: github.event.pull_request.merged == true
+  create-tags:
+    # Only run if PR was merged to main branch from release branch and has release label
+    if: |
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'release' &&
+      contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_tags_labels.outputs.version }}
+      git_tag: ${{ steps.get_tags_labels.outputs.git_tag }}
+      zeam_tag: ${{ steps.get_tags_labels.outputs.zeam_tag }}
+      docker_tag: ${{ steps.get_tags_labels.outputs.docker_tag }}
+      github_tag: ${{ steps.get_tags_labels.outputs.github_tag }}
+      has_network_tag: ${{ steps.get_tags_labels.outputs.has_network_tag }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Extract tags from PR labels
+      id: get_tags_labels
+      run: |
+        LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+        echo "PR Labels: $LABELS"
+
+        # Look for version label (x.y.z format only) - MANDATORY
+        VERSION=$(echo $LABELS | jq -r '.[] | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' | head -n 1)
+
+        # Look for zeam network tags (devnet0, devnet1, testnet, mainnet)
+        ZEAM_TAG_LOWER=$(echo $LABELS | jq -r '.[] | select(test("^(devnet[0-9]+|testnet[0-9]*|mainnet)$"))' | head -n 1)
+
+        if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+          echo "❌ No version label found! Please add a version label in x.y.z format (e.g. 1.0.0)"
+          exit 1
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "git_tag=v$VERSION" >> $GITHUB_OUTPUT
+        echo "✅ Version found: $VERSION"
+
+        if [ -n "$ZEAM_TAG_LOWER" ] && [ "$ZEAM_TAG_LOWER" != "null" ]; then
+          # docker_tag keeps lowercase (devnet1)
+          DOCKER_TAG="$ZEAM_TAG_LOWER"
+          # github_tag capitalizes first letter (Devnet1)
+          GITHUB_TAG="$(echo "$ZEAM_TAG_LOWER" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+          echo "zeam_tag=$ZEAM_TAG_LOWER" >> $GITHUB_OUTPUT
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          echo "github_tag=$GITHUB_TAG" >> $GITHUB_OUTPUT
+          echo "has_network_tag=true" >> $GITHUB_OUTPUT
+          echo "✅ Found network tag: label=$ZEAM_TAG_LOWER -> docker_tag=$DOCKER_TAG, github_tag=$GITHUB_TAG"
+        else
+          echo "has_network_tag=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No network tag found (optional)"
+        fi
+
+    - name: Create and push git tags
+      run: |
+        git fetch --prune --tags --force
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        CREATE_VERSION_TAG=false
+        CREATE_NETWORK_TAG=false
+
+        # Version tag - FAIL if already exists
+        if git rev-parse "${{ steps.get_tags_labels.outputs.git_tag }}" >/dev/null 2>&1; then
+          echo "❌ Version tag ${{ steps.get_tags_labels.outputs.git_tag }} already exists. Please use a different version."
+          exit 1
+        else
+          CREATE_VERSION_TAG=true
+        fi
+
+        # Network tag - DELETE and RECREATE if exists
+        if [ "${{ steps.get_tags_labels.outputs.has_network_tag }}" = "true" ]; then
+          GITHUB_TAG="${{ steps.get_tags_labels.outputs.github_tag }}"
+
+          if git rev-parse "$GITHUB_TAG" >/dev/null 2>&1; then
+            echo "🗑️ Network tag $GITHUB_TAG already exists, will be recreated"
+            git tag -d "$GITHUB_TAG" || echo "⚠️ Local tag deletion failed"
+            git push --delete origin "$GITHUB_TAG" || echo "⚠️ Remote tag deletion failed"
+          fi
+          CREATE_NETWORK_TAG=true
+        fi
+            # Create version tag
+        if [ "$CREATE_VERSION_TAG" = "true" ]; then
+          git tag -a "${{ steps.get_tags_labels.outputs.git_tag }}" -m "Release version ${{ steps.get_tags_labels.outputs.version }}"
+          git push origin "${{ steps.get_tags_labels.outputs.git_tag }}"
+          echo "✅ Created version tag ${{ steps.get_tags_labels.outputs.git_tag }}"
+        fi
+
+        # Create network git tag using github_tag (Devnet1 not devnet1)
+        if [ "$CREATE_NETWORK_TAG" = "true" ]; then
+          GITHUB_TAG="${{ steps.get_tags_labels.outputs.github_tag }}"
+          git tag -a "$GITHUB_TAG" -m "Network release for $GITHUB_TAG"
+          git push origin "$GITHUB_TAG"
+          echo "✅ Created network git tag $GITHUB_TAG"
+        fi   
+
+  build-and-push:
+    needs: create-tags
     runs-on: ubuntu-latest
 
     steps:
@@ -34,65 +133,6 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Extract tags from PR labels
-      id: get_tags_labels
-      run: |
-        # Get PR labels and extract version
-        LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
-        echo "PR Labels: $LABELS"
-
-        # Look for version label (e.g., "v1.0.0", "version:1.0.0", etc.)
-        VERSION=$(echo $LABELS | jq -r '.[] | select(test("^(v|version:)?[0-9]+\\.[0-9]+\\.[0-9]+")) | gsub("^(v|version:)"; "")')
-
-        # Look for zeam network tags (devnet0, devnet1, testnet, mainnet)
-        ZEAM_TAG=$(echo $LABELS | jq -r '.[] | select(test("^(devnet[0-9]+|testnet[0-9]*|mainnet)$"))')
-
-        if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
-          echo "❌ No version label found! Please add a label like 'v1.0.0' or 'version:1.0.0'"
-          exit 1
-        fi
-
-        # Set outputs
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "git_tag=v$VERSION" >> $GITHUB_OUTPUT
-
-        if [ -n "$ZEAM_TAG" ] && [ "$ZEAM_TAG" != "null" ]; then
-          echo "zeam_tag=$ZEAM_TAG" >> $GITHUB_OUTPUT
-          echo "has_network_tag=true" >> $GITHUB_OUTPUT
-          echo "✅ Found network tag: $ZEAM_TAG"
-        else
-          echo "has_network_tag=false" >> $GITHUB_OUTPUT
-          echo "ℹ️ No network tag found (optional)"
-        fi
-
-        echo "✅ Version found: $VERSION"
-
-    - name: Create and push git tags
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-
-        # Create version tag
-        if git rev-parse "${{ steps.get_tags_labels.outputs.git_tag }}" >/dev/null 2>&1; then
-          echo "⚠️ Tag ${{ steps.get_tags_labels.outputs.git_tag }} already exists, skipping"
-        else
-          git tag -a "${{ steps.get_tags_labels.outputs.git_tag }}" -m "Release version ${{ steps.get_tags_labels.outputs.version }}"
-          git push origin "${{ steps.get_tags_labels.outputs.git_tag }}"
-          echo "✅ Created version tag ${{ steps.get_tags_labels.outputs.git_tag }}"
-        fi
-
-        # Create zeam network tag if network label exists
-        if [ "${{ steps.get_tags_labels.outputs.has_network_tag }}" = "true" ]; then
-          ZEAM_GIT_TAG="${{ steps.get_tags_labels.outputs.zeam_tag }}"
-          if git rev-parse "$ZEAM_GIT_TAG" >/dev/null 2>&1; then
-            echo "⚠️ Zeam tag $ZEAM_GIT_TAG already exists, skipping"
-          else
-            git tag -a "$ZEAM_GIT_TAG" -m "Zeam network tag for ${{ steps.get_tags_labels.outputs.zeam_tag }}"
-            git push origin "$ZEAM_GIT_TAG"
-            echo "✅ Created zeam tag $ZEAM_GIT_TAG"
-          fi
-        fi
-
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -100,8 +140,8 @@ jobs:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=raw,value=latest
-          type=raw,value=${{ steps.get_tags_labels.outputs.version }}
-          type=raw,value=${{ steps.get_tags_labels.outputs.zeam_tag }},enable=${{ steps.get_tags_labels.outputs.has_network_tag }}
+          type=raw,value=${{ needs.create-tags.outputs.version }}
+          type=raw,value=${{ needs.create-tags.outputs.zeam_tag }},enable=${{ needs.create-tags.outputs.has_network_tag == 'true' }}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -113,3 +153,115 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+  create-github-release:
+    needs: [ create-tags, build-and-push ]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.create-tags.outputs.has_network_tag == 'true' && needs.create-tags.outputs.github_tag || needs.create-tags.outputs.git_tag }}
+        name: ${{ needs.create-tags.outputs.has_network_tag == 'true' && format('Release {0}', needs.create-tags.outputs.github_tag) || format('Release {0}', needs.create-tags.outputs.git_tag) }}
+        body: |
+          🚀 **Release ${{ needs.create-tags.outputs.version }}**
+          ${{ needs.create-tags.outputs.has_network_tag == 'true' && format('**Network:** `{0}`', needs.create-tags.outputs.github_tag) || '' }}
+
+          ## 📋 PR Details
+          **Title:** ${{ github.event.pull_request.title }}
+          **Author:** @${{ github.event.pull_request.user.login }}
+          **PR:** ${{ github.event.pull_request.html_url }}
+
+          ## 🐳 Docker Images
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.create-tags.outputs.version }}
+          ${{ needs.create-tags.outputs.has_network_tag == 'true' && format('docker pull {0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, needs.create-tags.outputs.zeam_tag) || '' }}
+          ```
+        draft: false
+        prerelease: ${{ needs.create-tags.outputs.zeam_tag != '' && needs.create-tags.outputs.zeam_tag != 'mainnet' }}
+
+    - name: Push code to network branch
+      if: needs.create-tags.outputs.has_network_tag == 'true'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        NETWORK_BRANCH="${{ needs.create-tags.outputs.zeam_tag }}"
+        git fetch origin
+
+        if git ls-remote --heads origin | grep -q "refs/heads/$NETWORK_BRANCH$"; then
+          echo "✅ Branch $NETWORK_BRANCH exists, updating..."
+          git checkout "$NETWORK_BRANCH"
+          git merge origin/main --no-edit || {
+            echo "❌ Merge conflict on $NETWORK_BRANCH branch"
+            exit 1
+          }
+        else
+          echo "✅ Creating new branch $NETWORK_BRANCH from main..."
+          git checkout -b "$NETWORK_BRANCH" origin/main
+        fi
+
+        git push origin "$NETWORK_BRANCH"
+        echo "✅ Successfully pushed to $NETWORK_BRANCH branch"
+
+    - name: Send Telegram success notification
+      if: success()
+      run: |
+        VERSION="${{ needs.create-tags.outputs.version }}"
+        ZEAM_TAG="${{ needs.create-tags.outputs.zeam_tag }}"
+        GITHUB_TAG="${{ needs.create-tags.outputs.github_tag }}"
+        HAS_NETWORK="${{ needs.create-tags.outputs.has_network_tag }}"
+        REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+
+        if [ "$HAS_NETWORK" = "true" ]; then
+          MESSAGE="🚀 *Hash-Sig CLI $GITHUB_TAG Release SUCCESS*
+
+        *Release Details:*
+        • Version: \`$VERSION\`
+        • Network: \`$GITHUB_TAG\`
+        • Repository: [${{ github.repository }}]($REPO_URL)
+
+        *🐋 Docker Images:*
+        • \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`
+        • \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION\`
+        • \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$ZEAM_TAG\`
+
+        *🔗 Links:*
+        • [GitHub Release]($REPO_URL/releases/tag/$GITHUB_TAG)
+
+        *🌿 Code pushed to \`$ZEAM_TAG\` branch*
+
+        _🤖 Automated release notification_"
+        else
+          MESSAGE="🚀 *Hash-Sig CLI v$VERSION Release SUCCESS*
+
+        *Release Details:*
+        • Version: \`$VERSION\`
+        • Repository: [${{ github.repository }}]($REPO_URL)
+
+        *🐋 Docker Images:*
+        • \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`
+        • \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION\`
+
+        *🔗 Links:*
+        • [GitHub Release]($REPO_URL/releases/tag/v$VERSION)
+        • [PR](${{ github.event.pull_request.html_url }})
+
+        _🤖 Automated release notification_"
+        fi
+
+        curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"chat_id\": \"${{ secrets.TELEGRAM_CHAT_ID }}\",
+            \"text\": \"$MESSAGE\",
+            \"parse_mode\": \"Markdown\",
+            \"disable_web_page_preview\": true
+          }" && echo "✅ Telegram notification sent" || echo "❌ Telegram notification failed"
