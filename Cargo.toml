@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 # LeanSig library (from GitHub repository, pinned to commit)
-leansig = { git = "https://github.com/leanEthereum/leanSig.git", rev = "73bedc26ed961b110df7ac2e234dc11361a4bf25" }
+leansig = { git = "https://github.com/leanEthereum/leanSig.git", rev = "5cc7e37480362f94e86695428a9ceb9a96b66b97" }
 
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }
@@ -23,5 +23,5 @@ serde_json = "1.0"
 hex = "0.4"
 
 # Random number generation
-rand = "0.9"
+rand = "0.10"
 
