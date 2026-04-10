@@ -1,4 +1,4 @@
-FROM rust:1.87 AS builder
+FROM rust:1.92 AS builder
 
 WORKDIR /usr/src/hash-sig-cli
 
