@@ -53,34 +53,42 @@ cargo run --release --bin hashsig -- generate \
 **Output (default `--export-format both`):**
 
 **Indexed format (default, without `--distributed`):**
-The tool creates a directory with key pairs exported as **SSZ-encoded binary files** plus **legacy JSON**:
+The tool creates a directory with key pairs exported as **SSZ-encoded binary files** plus **legacy JSON**. Two key pairs are generated per validator — one for the proposer role and one for the attester role:
 ```
 generated_keys/
-├── validator-keys-manifest.yaml  # Manifest file (if --create-manifest is true)
-├── validator_0_pk.ssz            # Public key for validator 0 (SSZ bytes)
-├── validator_0_sk.ssz            # Secret key for validator 0 (SSZ bytes)
-├── validator_0_pk.json           # Public key for validator 0 (legacy JSON)
-├── validator_0_sk.json           # Secret key for validator 0 (legacy JSON)
-├── validator_1_pk.ssz            # Public key for validator 1 (SSZ bytes)
-├── validator_1_sk.ssz            # Secret key for validator 1 (SSZ bytes)
-├── validator_1_pk.json           # Public key for validator 1 (legacy JSON)
-├── validator_1_sk.json           # Secret key for validator 1 (legacy JSON)
+├── validator-keys-manifest.yaml          # Manifest file (if --create-manifest is true)
+├── validator_0_proposer_key_pk.ssz       # Proposer public key for validator 0 (SSZ bytes)
+├── validator_0_proposer_key_sk.ssz       # Proposer secret key for validator 0 (SSZ bytes)
+├── validator_0_attester_key_pk.ssz       # Attester public key for validator 0 (SSZ bytes)
+├── validator_0_attester_key_sk.ssz       # Attester secret key for validator 0 (SSZ bytes)
+├── validator_0_proposer_key_pk.json      # Proposer public key for validator 0 (legacy JSON)
+├── validator_0_proposer_key_sk.json      # Proposer secret key for validator 0 (legacy JSON)
+├── validator_0_attester_key_pk.json      # Attester public key for validator 0 (legacy JSON)
+├── validator_0_attester_key_sk.json      # Attester secret key for validator 0 (legacy JSON)
+├── validator_1_proposer_key_pk.ssz       # Proposer public key for validator 1 (SSZ bytes)
+├── validator_1_proposer_key_sk.ssz       # Proposer secret key for validator 1 (SSZ bytes)
+├── validator_1_attester_key_pk.ssz       # Attester public key for validator 1 (SSZ bytes)
+├── validator_1_attester_key_sk.ssz       # Attester secret key for validator 1 (SSZ bytes)
+├── validator_1_proposer_key_pk.json      # Proposer public key for validator 1 (legacy JSON)
+├── validator_1_proposer_key_sk.json      # Proposer secret key for validator 1 (legacy JSON)
+├── validator_1_attester_key_pk.json      # Attester public key for validator 1 (legacy JSON)
+├── validator_1_attester_key_sk.json      # Attester secret key for validator 1 (legacy JSON)
 └── ...
 ```
 
 **Distributed format (with `--distributed`):**
-When using `--distributed`, validators are named using the first-3 and last-3 bytes of the public key (hex-encoded):
+When using `--distributed`, validators are named using the first-3 and last-3 bytes of the **proposer** public key (hex-encoded):
 ```
 generated_keys/
-├── validator-keys-manifest.yaml  # Manifest file (if --create-manifest is true)
-├── validator-987678-de4578-pk.ssz  # Public key (SSZ bytes)
-├── validator-987678-de4578-sk.ssz  # Secret key (SSZ bytes)
-├── validator-987678-de4578-pk.json # Public key (legacy JSON)
-├── validator-987678-de4578-sk.json # Secret key (legacy JSON)
-├── validator-52d9eb-dd0a4f-pk.ssz  # Public key (SSZ bytes)
-├── validator-52d9eb-dd0a4f-sk.ssz  # Secret key (SSZ bytes)
-├── validator-52d9eb-dd0a4f-pk.json # Public key (legacy JSON)
-├── validator-52d9eb-dd0a4f-sk.json # Secret key (legacy JSON)
+├── validator-keys-manifest.yaml                    # Manifest file (if --create-manifest is true)
+├── validator-987678-de4578_proposer_key_pk.ssz     # Proposer public key (SSZ bytes)
+├── validator-987678-de4578_proposer_key_sk.ssz     # Proposer secret key (SSZ bytes)
+├── validator-987678-de4578_attester_key_pk.ssz     # Attester public key (SSZ bytes)
+├── validator-987678-de4578_attester_key_sk.ssz     # Attester secret key (SSZ bytes)
+├── validator-987678-de4578_proposer_key_pk.json    # Proposer public key (legacy JSON)
+├── validator-987678-de4578_proposer_key_sk.json    # Proposer secret key (legacy JSON)
+├── validator-987678-de4578_attester_key_pk.json    # Attester public key (legacy JSON)
+├── validator-987678-de4578_attester_key_sk.json    # Attester secret key (legacy JSON)
 └── ...
 ```
 
@@ -101,12 +109,16 @@ num_validators: 2
 
 validators:
   - index: 0
-    pubkey_hex: 0x...
-    privkey_file: validator_0_sk.ssz
+    proposer_key_pubkey_hex: 0x...
+    proposer_key_privkey_file: validator_0_proposer_key_sk.ssz
+    attester_key_pubkey_hex: 0x...
+    attester_key_privkey_file: validator_0_attester_key_sk.ssz
 
   - index: 1
-    pubkey_hex: 0x...
-    privkey_file: validator_1_sk.ssz
+    proposer_key_pubkey_hex: 0x...
+    proposer_key_privkey_file: validator_1_proposer_key_sk.ssz
+    attester_key_pubkey_hex: 0x...
+    attester_key_privkey_file: validator_1_attester_key_sk.ssz
 ```
 
 **Distributed format manifest** (with `--distributed`):
@@ -123,16 +135,20 @@ num_active_epochs: 262144
 num_validators: 2
 
 validators:
-  - pubkey_hex: 0x...
-    privkey_file: validator-987678-de4578-sk.ssz
+  - proposer_key_pubkey_hex: 0x...
+    proposer_key_privkey_file: validator-987678-de4578_proposer_key_sk.ssz
+    attester_key_pubkey_hex: 0x...
+    attester_key_privkey_file: validator-987678-de4578_attester_key_sk.ssz
 
-  - pubkey_hex: 0x...
-    privkey_file: validator-52d9eb-dd0a4f-sk.ssz
+  - proposer_key_pubkey_hex: 0x...
+    proposer_key_privkey_file: validator-52d9eb-dd0a4f_proposer_key_sk.ssz
+    attester_key_pubkey_hex: 0x...
+    attester_key_privkey_file: validator-52d9eb-dd0a4f_attester_key_sk.ssz
 ```
 
 **Key differences:**
 - **Indexed format**: Manifest includes an `index` field for each validator
-- **Distributed format**: Manifest does **not** include the `index` field (only `pubkey_hex` and `privkey_file`)
+- **Distributed format**: Manifest does **not** include the `index` field (only `proposer_key_pubkey_hex`, `proposer_key_privkey_file`, `attester_key_pubkey_hex`, and `attester_key_privkey_file`)
 
 The `.ssz` files contain the **canonical SSZ serialization** (`to_bytes()`) of the underlying key types from `leanSig`, written directly as raw bytes (not JSON or hex).
 

@@ -91,8 +91,10 @@ fn main() -> std::io::Result<()> {
 }
 
 struct ValidatorInfo {
-    pubkey_hex: String,
-    privkey_file: String,
+    proposer_key_pubkey_hex: String,
+    proposer_key_privkey_file: String,
+    attester_key_pubkey_hex: String,
+    attester_key_privkey_file: String,
 }
 
 fn generate_keys(
@@ -124,72 +126,98 @@ fn generate_keys(
     let mut validator_info_list = Vec::new();
 
     for i in 0..num_validators {
-        // Generate the key pair
-        let (pk, sk) = SIGTopLevelTargetSumLifetime32Dim64Base8::key_gen(
+        // Generate proposer key pair
+        let (proposer_pk, proposer_sk) = SIGTopLevelTargetSumLifetime32Dim64Base8::key_gen(
             &mut rng,
             0,
             activation_duration,
         );
 
-        // Serialize the public key to SSZ bytes
-        let pk_bytes = pk.to_bytes();
-        
-        // Determine key prefix based on format
+        // Generate attester key pair
+        let (attester_pk, attester_sk) = SIGTopLevelTargetSumLifetime32Dim64Base8::key_gen(
+            &mut rng,
+            0,
+            activation_duration,
+        );
+
+        // Serialize proposer public key to SSZ bytes (used for prefix derivation)
+        let proposer_pk_bytes = proposer_pk.to_bytes();
+
+        // Determine key prefix based on format (always derived from proposer key)
         let key_prefix = if distributed {
-            // Extract first 3 and last 3 bytes from pk_bytes
-            if pk_bytes.len() < 3 {
+            if proposer_pk_bytes.len() < 3 {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "Public key bytes too short to extract first-3 last-3 bytes"
                 ));
             }
-            let first_3 = &pk_bytes[0..3];
-            let last_3 = &pk_bytes[pk_bytes.len() - 3..];
-            let first_3_hex = hex::encode(first_3);
-            let last_3_hex = hex::encode(last_3);
-            format!("validator-{}-{}", first_3_hex, last_3_hex)
+            let first_3 = &proposer_pk_bytes[0..3];
+            let last_3 = &proposer_pk_bytes[proposer_pk_bytes.len() - 3..];
+            format!("validator-{}-{}", hex::encode(first_3), hex::encode(last_3))
         } else {
             format!("validator_{}", i)
         };
-        
+
         println!("Generating {}...", key_prefix);
 
-        // Write public key to SSZ file
-        let mut pk_file = File::create(output_dir.join(format!("{}_pk.ssz", key_prefix)))?;
-        pk_file.write_all(&pk_bytes)?;
+        // --- Proposer key files ---
+        let mut proposer_pk_file = File::create(output_dir.join(format!("{}_proposer_key_pk.ssz", key_prefix)))?;
+        proposer_pk_file.write_all(&proposer_pk_bytes)?;
 
-        // Serialize the secret key to SSZ bytes and write to a binary .ssz file
-        let sk_bytes = sk.to_bytes();
-        let mut sk_file = File::create(output_dir.join(format!("{}_sk.ssz", key_prefix)))?;
-        sk_file.write_all(&sk_bytes)?;
+        let proposer_sk_bytes = proposer_sk.to_bytes();
+        let mut proposer_sk_file = File::create(output_dir.join(format!("{}_proposer_key_sk.ssz", key_prefix)))?;
+        proposer_sk_file.write_all(&proposer_sk_bytes)?;
 
-        println!("  ✅ {}_pk.ssz", key_prefix);
-        println!("  ✅ {}_sk.ssz", key_prefix);
+        println!("  ✅ {}_proposer_key_pk.ssz", key_prefix);
+        println!("  ✅ {}_proposer_key_sk.ssz", key_prefix);
+
+        // --- Attester key files ---
+        let attester_pk_bytes = attester_pk.to_bytes();
+        let mut attester_pk_file = File::create(output_dir.join(format!("{}_attester_key_pk.ssz", key_prefix)))?;
+        attester_pk_file.write_all(&attester_pk_bytes)?;
+
+        let attester_sk_bytes = attester_sk.to_bytes();
+        let mut attester_sk_file = File::create(output_dir.join(format!("{}_attester_key_sk.ssz", key_prefix)))?;
+        attester_sk_file.write_all(&attester_sk_bytes)?;
+
+        println!("  ✅ {}_attester_key_pk.ssz", key_prefix);
+        println!("  ✅ {}_attester_key_sk.ssz", key_prefix);
 
         if write_json {
-            // Also export legacy JSON representations for backwards compatibility
-            let pk_json =
-                serde_json::to_string_pretty(&pk).expect("Failed to serialize public key to JSON");
-            let mut pk_json_file =
-                File::create(output_dir.join(format!("{}_pk.json", key_prefix)))?;
-            pk_json_file.write_all(pk_json.as_bytes())?;
+            // Proposer key JSON (legacy)
+            let proposer_pk_json = serde_json::to_string_pretty(&proposer_pk)
+                .expect("Failed to serialize proposer public key to JSON");
+            File::create(output_dir.join(format!("{}_proposer_key_pk.json", key_prefix)))?
+                .write_all(proposer_pk_json.as_bytes())?;
 
-            let sk_json =
-                serde_json::to_string_pretty(&sk).expect("Failed to serialize secret key to JSON");
-            let mut sk_json_file =
-                File::create(output_dir.join(format!("{}_sk.json", key_prefix)))?;
-            sk_json_file.write_all(sk_json.as_bytes())?;
+            let proposer_sk_json = serde_json::to_string_pretty(&proposer_sk)
+                .expect("Failed to serialize proposer secret key to JSON");
+            File::create(output_dir.join(format!("{}_proposer_key_sk.json", key_prefix)))?
+                .write_all(proposer_sk_json.as_bytes())?;
 
-            println!("  ⚠️  (legacy) {}_pk.json", key_prefix);
-            println!("  ⚠️  (legacy) {}_sk.json", key_prefix);
+            // Attester key JSON (legacy)
+            let attester_pk_json = serde_json::to_string_pretty(&attester_pk)
+                .expect("Failed to serialize attester public key to JSON");
+            File::create(output_dir.join(format!("{}_attester_key_pk.json", key_prefix)))?
+                .write_all(attester_pk_json.as_bytes())?;
+
+            let attester_sk_json = serde_json::to_string_pretty(&attester_sk)
+                .expect("Failed to serialize attester secret key to JSON");
+            File::create(output_dir.join(format!("{}_attester_key_sk.json", key_prefix)))?
+                .write_all(attester_sk_json.as_bytes())?;
+
+            println!("  ⚠️  (legacy) {}_proposer_key_pk.json", key_prefix);
+            println!("  ⚠️  (legacy) {}_proposer_key_sk.json", key_prefix);
+            println!("  ⚠️  (legacy) {}_attester_key_pk.json", key_prefix);
+            println!("  ⚠️  (legacy) {}_attester_key_sk.json", key_prefix);
         }
 
         // Store validator info for manifest
-        let pubkey_hex = format!("0x{}", hex::encode(&pk_bytes));
-        let privkey_file = format!("{}_sk.ssz", key_prefix);
         validator_info_list.push(ValidatorInfo {
-            pubkey_hex,
-            privkey_file,
+            proposer_key_pubkey_hex: format!("0x{}", hex::encode(&proposer_pk_bytes)),
+            proposer_key_privkey_file: format!("{}_proposer_key_sk.ssz", key_prefix),
+            attester_key_pubkey_hex: format!("0x{}", hex::encode(&attester_pk_bytes)),
+            attester_key_privkey_file: format!("{}_attester_key_sk.ssz", key_prefix),
         });
     }
 
@@ -225,13 +253,17 @@ fn create_validator_manifest(
     for (i, info) in validator_info.iter().enumerate() {
         if distributed {
             // Distributed format: no index field
-            writeln!(manifest_file, "  - pubkey_hex: {}", info.pubkey_hex)?;
-            writeln!(manifest_file, "    privkey_file: {}", info.privkey_file)?;
+            writeln!(manifest_file, "  - proposer_key_pubkey_hex: {}", info.proposer_key_pubkey_hex)?;
+            writeln!(manifest_file, "    proposer_key_privkey_file: {}", info.proposer_key_privkey_file)?;
+            writeln!(manifest_file, "    attester_key_pubkey_hex: {}", info.attester_key_pubkey_hex)?;
+            writeln!(manifest_file, "    attester_key_privkey_file: {}", info.attester_key_privkey_file)?;
         } else {
             // Indexed format: include index field
             writeln!(manifest_file, "  - index: {}", i)?;
-            writeln!(manifest_file, "    pubkey_hex: {}", info.pubkey_hex)?;
-            writeln!(manifest_file, "    privkey_file: {}", info.privkey_file)?;
+            writeln!(manifest_file, "    proposer_key_pubkey_hex: {}", info.proposer_key_pubkey_hex)?;
+            writeln!(manifest_file, "    proposer_key_privkey_file: {}", info.proposer_key_privkey_file)?;
+            writeln!(manifest_file, "    attester_key_pubkey_hex: {}", info.attester_key_pubkey_hex)?;
+            writeln!(manifest_file, "    attester_key_privkey_file: {}", info.attester_key_privkey_file)?;
         }
         if i < validator_info.len() - 1 {
             writeln!(manifest_file)?;
